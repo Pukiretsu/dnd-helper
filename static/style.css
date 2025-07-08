@@ -1,0 +1,14 @@
+
+body {
+    background-color: #121212;
+    color: #ffffff;
+    font-family: Arial, sans-serif;
+    padding: 20px;
+}
+h1 {
+    color: #90caf9;
+}
+pre, div {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
