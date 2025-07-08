@@ -1,16 +1,17 @@
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from fastapi import Form
 from fastapi.responses import RedirectResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
 import json
 import asyncio
 import aiosqlite
 import uuid
+
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -55,9 +56,15 @@ async def startup_event():
 
 ## Routes
 
+@app.get("/")
+async def get_index_page(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
 @app.get("/player")
-async def get_player_page(request: Request):
-    return templates.TemplateResponse("player.html", {"request": request})
+async def get_player_page(request: Request, username: str = ""):
+    if not username:
+        return RedirectResponse(url="/login")
+    return templates.TemplateResponse("player.html", {"request": request, "username": username})
 
 @app.get("/master")
 async def get_master_page(request: Request):
@@ -78,21 +85,34 @@ async def login_post(request: Request, username: str = Form(...), password: str 
         else:
             return templates.TemplateResponse("login.html", {"request": request, "error": "Usuario o contraseña inválidos"})
 
+# fallback
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request, exc):
+    if exc.status_code == 404:
+        return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
+    else:
+        return templates.TemplateResponse(
+            "error.html",
+            {"request": request, "status_code": exc.status_code, "detail": exc.detail},
+            status_code=exc.status_code,
+        )
+
 ## Websockets
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, username: str):
     await websocket.accept()
-    player_id = str(uuid.uuid4())
+    
     players_state = await load_players_state()
-    state = players_state.get(player_id, {
-        "player_id": player_id,
+    state = players_state.get(username, {
+        "player_id": username,
         "vida": 100,
         "mana": 50,
-        "rupias": 0,
+        "dinero": 0,
         "inventario": [],
+        "tiempo_restante": 300
     })
-    connections[player_id] = websocket
+    connections[username] = websocket
     await websocket.send_json(state)
 
     try:
@@ -103,7 +123,7 @@ async def websocket_endpoint(websocket: WebSocket):
             for conn in connections.values():
                 await conn.send_json(players_state)
     except WebSocketDisconnect:
-        del connections[player_id]
+        del connections[username]
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

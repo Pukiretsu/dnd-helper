@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>DND Helper - Login</title>
+    <link rel="icon" type="image/x-icon" href="/static/icons/favicon.ico">
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+    <h1>Login</h1>
+    <form action="/login" method="post">
+        <label>Usuario: <input type="text" name="username" required /></label><br />
+        <label>Contraseña: <input type="password" name="password" required /></label><br />
+        <button type="submit">Entrar</button>
+    </form>
+    {% if error %}
+    <p style="color:red;">{{ error }}</p>
+    {% endif %}
+</body>
+</html>
