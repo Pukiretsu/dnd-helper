@@ -1,5 +1,5 @@
 const urlParams = new URLSearchParams(window.location.search);
-const username = urlParams.get("username");
+const user_uuid = urlParams.get("user_uuid");
 const ws = new WebSocket(`ws://${location.host}/ws?username=${username}`);
 
 ws.onmessage = (event) => {
