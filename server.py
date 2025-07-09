@@ -1,9 +1,9 @@
 import asyncio
 import json
-from time import timezone
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+
 import aiosqlite
 import uvicorn
 from fastapi import Cookie, FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -13,6 +13,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from passlib.context import CryptContext
 from jose import JWTError, jwt
+
+print(">>>servidor corriendo<<<<")
 
 # Configure the password hashing context
 # We use bcrypt as the recommended hashing algorithm
@@ -24,7 +26,8 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 
 # Global variables (consider using FastAPI's dependency injection or app.state for larger apps)
-connections = {} # Stores active WebSocket connections: {user_uuid: {"ws": WebSocket, "role": "player/master"}}
+# connections now stores user_uuid -> {"ws": WebSocket, "role": "player/master", "selected_player_id": "..."}
+connections = {}
 db_file = "sessions.db"
 
 tags = {
@@ -108,31 +111,33 @@ async def save_player_state(player_id, state):
         )
         await db.commit()
 
-async def load_players_state():
-    """
-    Loads all players' states from the database.
-    """
+async def load_player_state_by_id(player_id: str):
+    """Loads a single player's state from the database by player_id."""
     async with aiosqlite.connect(db_file) as db:
-        cursor = await db.execute("SELECT player_id, state FROM players")
-        rows = await cursor.fetchall()
-        return {row[0]: json.loads(row[1]) for row in rows}
+        cursor = await db.execute("SELECT state FROM players WHERE player_id = ?", (player_id,))
+        row = await cursor.fetchone()
+        if row:
+            return json.loads(row[0])
+        return None
 
 async def get_active_players_state():
     """
-    Retrieves the state of players who are currently connected via WebSocket.
+    Retrieves the state of players who are currently connected via WebSocket
+    and have a character selected.
     Returns:
         dict: A dictionary where keys are player_ids and values are their states.
     """
     active_players_data = {}
     async with aiosqlite.connect(db_file) as db:
         for user_uuid, conn_info in connections.items():
-            if conn_info["role"] == "player":
+            if conn_info["role"] == "player" and "selected_player_id" in conn_info:
+                selected_player_id = conn_info["selected_player_id"]
                 cursor = await db.execute(
-                    "SELECT player_id, state FROM players WHERE owner_uuid = ?",
-                    (user_uuid,)
+                    "SELECT player_id, state FROM players WHERE player_id = ? AND owner_uuid = ?",
+                    (selected_player_id, user_uuid)
                 )
-                rows = await cursor.fetchall()
-                for row in rows:
+                row = await cursor.fetchone()
+                if row:
                     active_players_data[row[0]] = json.loads(row[1])
     return active_players_data
 
@@ -199,12 +204,70 @@ async def lobby_page(request: Request):
     return templates.TemplateResponse("lobby.html", {"request": request, "user_uuid": user_uuid})
 
 @app.get("/player")
-async def get_player_page(request: Request, access_token: str = Cookie(None)):
-    """Renders the player page, requiring authentication."""
+async def get_player_page(
+    request: Request,
+    access_token: str = Cookie(None),
+    selected_player_id: str = Cookie(None, alias="selected_player_id_cookie") # Read the cookie
+):
+    """
+    Renders the player page, showing all characters owned by the authenticated user
+    and highlighting the selected one.
+    Requires authentication.
+    """
     user_uuid = verify_token(access_token)
     if not user_uuid:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("player.html", {"request": request, "token": access_token})
+
+    user_characters = []
+    selected_character = None
+
+    async with aiosqlite.connect(db_file) as db:
+        cursor = await db.execute(
+            "SELECT player_id, state FROM players WHERE owner_uuid = ?", (user_uuid,)
+        )
+        rows = await cursor.fetchall()
+        for row in rows:
+            character_data = {"player_id": row[0], "state": json.loads(row[1])}
+            user_characters.append(character_data)
+            if selected_player_id and row[0] == selected_player_id:
+                selected_character = character_data
+
+    return templates.TemplateResponse("player.html", {
+        "request": request,
+        "token": access_token,
+        "characters": user_characters,
+        "selected_character": selected_character # Pass the selected character to the template
+    })
+
+@app.post("/select-character")
+async def select_character_post(
+    request: Request,
+    player_id: str = Form(...),
+    access_token: str = Cookie(None)
+):
+    """
+    Handles the selection of a character by a player.
+    Sets a cookie with the selected player's ID.
+    """
+    user_uuid = verify_token(access_token)
+    if not user_uuid:
+        raise HTTPException(status_code=401, detail="No autenticado")
+
+    async with aiosqlite.connect(db_file) as db:
+        # Verify that the player_id belongs to the authenticated user_uuid
+        cursor = await db.execute(
+            "SELECT 1 FROM players WHERE player_id = ? AND owner_uuid = ?",
+            (player_id, user_uuid)
+        )
+        if not await cursor.fetchone():
+            raise HTTPException(status_code=403, detail="Personaje no encontrado o no pertenece a este usuario.")
+
+    response = RedirectResponse(url="/player", status_code=303)
+    # Set a new cookie for the selected player ID
+    response.set_cookie(key="selected_player_id_cookie", value=player_id, httponly=True, samesite="strict", max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+    print(f"{tags['app_log']} User {user_uuid} selected player: {player_id}")
+    return response
+
 
 @app.get("/master")
 async def get_master_page(request: Request, access_token: str = Cookie(None)):
@@ -258,27 +321,10 @@ async def register_post(
         
         # Insert into users table with hashed password
         await db.execute(
-            "INSERT INTO users (uuid, username, password) VALUES (?, ?, ?)", # Corrected order for uuid and username
+            "INSERT INTO users (uuid, username, password) VALUES (?, ?, ?)",
             (user_uuid, username, hashed_password) 
         )
-        
-        # Create initial player state
-        player_uuid = str(uuid.uuid4())
-        state = {
-            "player_id": player_uuid,
-            "owner_uuid": user_uuid,
-            "vida": 100,
-            "mana": 0,
-            "dinero": 0,
-            "inventario": []
-        }
-        
-        # Insert into players table
-        await db.execute(
-            "INSERT INTO players (player_id, owner_uuid, state) VALUES (?, ?, ?)",
-            (player_uuid, user_uuid, json.dumps(state))
-        )
-        await db.commit()
+        await db.commit() # Commit user creation
 
     # Redirect to login
     print(f"{tags['app_log']} Usuario: {username} creado con exito. UUID: {user_uuid}")
@@ -318,14 +364,13 @@ async def login_post(request: Request, username: str = Form(...), password: str 
             return templates.TemplateResponse("login.html", {"request": request, "error": "Usuario o contraseña inválidos"})
 
 @app.get("/logout")
-async def logout(request: Request): # Add request parameter to access cookies
+async def logout(request: Request):
     """Logs out the user by deleting the access token cookie."""
     user_uuid = None
     token = request.cookies.get("access_token")
     if token:
         user_uuid = verify_token(token)
         if user_uuid:
-            # Optionally, retrieve username from DB if needed for logging
             async with aiosqlite.connect(db_file) as db:
                 cursor = await db.execute("SELECT username FROM users WHERE uuid = ?", (user_uuid,))
                 username_row = await cursor.fetchone()
@@ -338,7 +383,91 @@ async def logout(request: Request): # Add request parameter to access cookies
 
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("access_token")
+    # Also delete the selected_player_id cookie on logout
+    response.delete_cookie("selected_player_id_cookie")
     return response
+
+# New routes for character creation
+@app.get("/create-character")
+async def create_character_page(request: Request, access_token: str = Cookie(None)):
+    """Renders the character creation page."""
+    user_uuid = verify_token(access_token)
+    if not user_uuid:
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("create_character.html", {"request": request, "error": ""})
+
+@app.post("/create-character")
+async def create_character_post(
+    request: Request,
+    access_token: str = Cookie(None),
+    nombre: str = Form(...),
+    clase: str = Form(...),
+    nivel: int = Form(...),
+    fuerza: int = Form(...),
+    ingenio: int = Form(...),
+    corazon: int = Form(...),
+    vida: int = Form(...),
+    mana: int = Form(...),
+    dinero: int = Form(...),
+    defensa: int = Form(...),
+    arma_equipada: str = Form(...),
+    armadura_equipada: str = Form(...),
+    inventario: str = Form(""), # Expect comma-separated string
+    habilidades: str = Form(""), # Expect comma-separated string
+    canciones_aprendidas: str = Form(""), # Expect comma-separated string
+):
+    """Handles the creation of a new character."""
+    user_uuid = verify_token(access_token)
+    if not user_uuid:
+        raise HTTPException(status_code=401, detail="No autenticado")
+
+    player_id = str(uuid.uuid4())
+    
+    # Parse comma-separated strings into lists
+    parsed_inventario = [item.strip() for item in inventario.split(',') if item.strip()]
+    parsed_habilidades = [item.strip() for item in habilidades.split(',') if item.strip()]
+    parsed_canciones_aprendidas = [item.strip() for item in canciones_aprendidas.split(',') if item.strip()]
+
+    character_state = {
+        "player_id": player_id, # Redundant but kept for consistency with current state structure
+        "nombre": nombre,
+        "clase": clase,
+        "nivel": nivel,
+        "fuerza": fuerza,
+        "ingenio": ingenio,
+        "corazon": corazon,
+        "vida": vida,
+        "mana": mana,
+        "dinero": dinero,
+        "defensa": defensa,
+        "arma_equipada": arma_equipada,
+        "armadura_equipada": armadura_equipada,
+        "inventario": parsed_inventario,
+        "habilidades": parsed_habilidades,
+        "canciones_aprendidas": parsed_canciones_aprendidas,
+    }
+
+    try:
+        async with aiosqlite.connect(db_file) as db:
+            await db.execute(
+                "INSERT INTO players (player_id, owner_uuid, state) VALUES (?, ?, ?)",
+                (player_id, user_uuid, json.dumps(character_state))
+            )
+            await db.commit()
+        print(f"{tags['app_log']} Personaje '{nombre}' creado por usuario {user_uuid} (Player ID: {player_id}).")
+        
+        # After creating a character, automatically select it for the user
+        response = RedirectResponse(url="/player", status_code=303)
+        response.set_cookie(key="selected_player_id_cookie", value=player_id, httponly=True, samesite="strict", max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+        return response
+
+    except Exception as e:
+        print(f"{tags['app_error']} Error al crear personaje: {e}")
+        return templates.TemplateResponse("create_character.html", {
+            "request": request,
+            "error": f"Error al crear personaje: {e}"
+        })
+
 
 # Fallback exception handler for 404 and other HTTP exceptions
 @app.exception_handler(StarletteHTTPException)
@@ -360,6 +489,8 @@ async def websocket_endpoint(websocket: WebSocket):
     """Handles WebSocket connections for player and master state synchronization."""
     await websocket.accept()
     user_uuid = None
+    selected_player_id = None # Initialize selected_player_id
+
     try:
         data = await websocket.receive_json()
         if data["type"] == "connect":
@@ -369,7 +500,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.close()
                 print(f"{tags['websocket']} Connection rejected: Invalid token.")
                 return
-            if data["role"] == "master":
+
+            role = data.get("role")
+            
+            if role == "master":
                 print(f"{tags['websocket']} connected: {user_uuid} as: master")
                 connections[user_uuid] = {"ws": websocket, "role": "master"}
                 players_state = await get_active_players_state()
@@ -378,55 +512,76 @@ async def websocket_endpoint(websocket: WebSocket):
                     "players": players_state
                 })
 
-            elif data["role"] == "player":
-                connections[user_uuid] = {"ws": websocket, "role": "player"}
-                print(f"{tags['websocket']} connected: {user_uuid} as: player")
-                # Query characters for the connected player
+            elif role == "player":
+                selected_player_id = data.get("player_id")
+                if not selected_player_id:
+                    await websocket.send_json({"error": "No player_id provided for player connection."})
+                    await websocket.close()
+                    print(f"{tags['websocket']} Player connection rejected: No player_id.")
+                    return
+
+                # Verify that the selected_player_id belongs to this user_uuid
                 async with aiosqlite.connect(db_file) as db:
                     cursor = await db.execute(
-                        "SELECT player_id, state FROM players WHERE owner_uuid = ?", (user_uuid,)
+                        "SELECT 1 FROM players WHERE player_id = ? AND owner_uuid = ?",
+                        (selected_player_id, user_uuid)
                     )
-                    rows = await cursor.fetchall()
-                    characters = [{"player_id": r[0], "state": json.loads(r[1])} for r in rows]
+                    if not await cursor.fetchone():
+                        await websocket.send_json({"error": "Player ID does not belong to this user."})
+                        await websocket.close()
+                        print(f"{tags['websocket']} Player connection rejected: Unauthorized player_id.")
+                        return
 
-                await websocket.send_json({
-                    "type": "characters_list",
-                    "characters": characters
-                })
-
-                if not characters:
+                connections[user_uuid] = {"ws": websocket, "role": "player", "selected_player_id": selected_player_id}
+                print(f"{tags['websocket']} connected: {user_uuid} as: player with character: {selected_player_id}")
+                
+                # Send the initial state of the selected character
+                initial_state = await load_player_state_by_id(selected_player_id)
+                if initial_state:
                     await websocket.send_json({
-                        "type": "no_characters",
-                        "message": "No tienes personajes aún. Crea uno nuevo."
+                        "type": "player_state_update",
+                        "player_id": selected_player_id,
+                        "state": initial_state
                     })
+                else:
+                    await websocket.send_json({"error": "Selected character state not found."})
+                    await websocket.close()
+                    return
 
         # Keep the connection alive for incoming messages (e.g., player state updates)
         while True:
-            # This loop will continue to receive messages from the client
-            # For players, this might be state updates. For masters, it might be commands.
-            # You'll need to add logic here to handle different message types.
             received_data = await websocket.receive_json()
-            print(f"{tags['websocket']} Received data from {user_uuid}: {received_data}")
+            print(f"{tags['websocket']} Received data from {user_uuid} (Role: {connections.get(user_uuid, {}).get('role')}): {received_data}")
 
-            # Example: If a player sends an update to their state
-            if user_uuid and connections.get(user_uuid, {}).get("role") == "player" and received_data.get("type") == "player_update":
-                player_id_to_update = received_data.get("player_id")
-                new_state = received_data.get("state")
-                if player_id_to_update and new_state:
-                    # Ensure the player_id being updated belongs to this user_uuid
-                    async with aiosqlite.connect(db_file) as db:
-                        cursor = await db.execute("SELECT owner_uuid FROM players WHERE player_id = ?", (player_id_to_update,))
-                        owner_row = await cursor.fetchone()
-                        if owner_row and owner_row[0] == user_uuid:
-                            await save_player_state(player_id_to_update, new_state)
-                            print(f"{tags['app_log']} Player {player_id_to_update} state updated by {user_uuid}")
-                        else:
-                            print(f"{tags['app_error']} Unauthorized state update attempt for player {player_id_to_update} by {user_uuid}")
+            # Handle player state updates
+            if connections.get(user_uuid, {}).get("role") == "player" and received_data.get("type") == "player_update":
+                # Ensure the update is for the currently selected character
+                if received_data.get("player_id") == selected_player_id:
+                    new_state = received_data.get("state")
+                    if new_state:
+                        await save_player_state(selected_player_id, new_state)
+                        print(f"{tags['app_log']} Player {selected_player_id} state updated by {user_uuid}")
+                        
+                        # Broadcast updated state to all masters
+                        updated_player_data = {selected_player_id: new_state}
+                        for master_uuid, master_conn in connections.items():
+                            if master_conn["role"] == "master":
+                                try:
+                                    await master_conn["ws"].send_json({
+                                        "type": "players_state",
+                                        "players": updated_player_data # Send only the updated player
+                                    })
+                                except Exception as e:
+                                    print(f"Error broadcasting update to master {master_uuid}: {e}")
+                else:
+                    print(f"{tags['app_error']} Unauthorized update attempt: player_id mismatch for {user_uuid}")
+            # Add more logic here for other message types (e.g., master commands)
             
     except WebSocketDisconnect:
         if user_uuid and user_uuid in connections:
+            role = connections[user_uuid]["role"]
             del connections[user_uuid]
-            print(f"{tags['websocket']} Disconnected: {user_uuid}")
+            print(f"{tags['websocket']} Disconnected: {user_uuid} (Role: {role})")
     except Exception as e:
         print(f"{tags['app_error']} WebSocket error for {user_uuid}: {e}")
         if user_uuid and user_uuid in connections:

@@ -6,13 +6,14 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1>Lobby</h1>
-    <p>Selecciona tu rol:</p>
-    <ul>
-        <li><a href="/player?user_uuid={{ user_uuid }}">Entrar como Jugador</a></li>
-        <li><a href="/master?user_uuid={{ user_uuid }}">Entrar como Máster</a></li>
-        <li><a href="/logout">Salir</a></li>
-
-    </ul>
+    <div class="content-wrapper">
+        <h1>Lobby</h1>
+        <p>Selecciona tu rol:</p>
+        <ul>
+            <li><a href="/player?user_uuid={{ user_uuid }}" class="action-button">Entrar como Jugador</a></li>
+            <li><a href="/master?user_uuid={{ user_uuid }}" class="action-button">Entrar como Máster</a></li>
+            <li><a href="/logout" class="logout-button">Salir</a></li>
+        </ul>
+    </div>
 </body>
 </html>

@@ -7,14 +7,17 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1>Registro de Jugador</h1>
-    <form action="/register" method="post">
-        <label>Usuario: <input type="text" name="username" required></label><br>
-        <label>Contraseña: <input type="password" name="password" required></label><br>
-        <button type="submit">Registrar</button>
-    </form>
-    {% if error %}
-    <p style="color:red;">{{ error }}</p>
-    {% endif %}
+    <div class="content-wrapper">
+        <h1>Registro de Jugador</h1>
+        <form action="/register" method="post">
+            <label>Usuario: <input type="text" name="username" required></label><br>
+            <label>Contraseña: <input type="password" name="password" required></label><br>
+            <button type="submit">Registrar</button>
+        </form>
+        <p>¿Ya tienes cuenta? <a href="/login">Inicia sesión aquí</a></p>
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+    </div>
 </body>
 </html>

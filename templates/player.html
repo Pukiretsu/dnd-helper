@@ -1,21 +1,199 @@
-
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>DND Helper - Jugador</title>
     <link rel="icon" type="image/x-icon" href="/static/icons/favicon.ico">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+        /* Estilos específicos para player.html que pueden sobrescribir o complementar style.css */
+        .selected-character-card {
+            background-color: #2C2C2C; /* Darker background for the selected card */
+            border: 2px solid #03DAC6; /* Teal border to highlight */
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6); /* Stronger shadow */
+            padding: 25px;
+            margin-bottom: 30px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 700px;
+            text-align: left;
+        }
+        .selected-character-card h2 {
+            color: #03DAC6; /* Teal for selected character heading */
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        .selected-character-card p {
+            margin: 8px 0;
+            color: #E0E0E0;
+        }
+        .selected-character-card strong {
+            color: #BB86FC; /* Purple accent for labels */
+        }
+        .character-list-container {
+            width: 100%;
+            max-width: 800px;
+            background-color: #1E1E1E;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            border: 1px solid #333333;
+            margin-top: 20px;
+        }
+        .character-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start; /* Align content to the left */
+        }
+        .character-item form {
+            display: flex;
+            justify-content: flex-end; /* Push button to the right */
+            width: 100%;
+            margin-top: 10px;
+            padding: 0; /* Remove form padding */
+            background: none; /* Remove form background */
+            box-shadow: none; /* Remove form shadow */
+            border: none; /* Remove form border */
+            grid-template-columns: 1fr; /* Override grid for form inside list item */
+            gap: 0;
+        }
+        .character-item form button {
+            grid-column: span 1; /* Override button span */
+            width: auto; /* Auto width for button */
+            margin: 0; /* Remove button margin */
+            padding: 8px 15px; /* Smaller padding for select button */
+            font-size: 0.9em;
+            background-color: #BB86FC; /* Purple for select button */
+            color: #121212;
+        }
+        .character-item form button:hover {
+            background-color: #9A50F0; /* Darker purple on hover */
+        }
+        .character-item p {
+            text-align: left; /* Ensure text in character items is left-aligned */
+        }
+        /* Responsive adjustments for character details */
+        @media (max-width: 768px) {
+            .selected-character-card, .character-list-container {
+                max-width: 95%;
+                padding: 15px;
+            }
+            .character-item {
+                padding: 15px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <p><a href="/lobby">Regresar </a></p>
-    <h1>Bienvenido Jugador</h1>
-    <ul id="characters-list"></ul>
-    <button id="create-character-btn" style="display:none;">Crear nuevo personaje</button>
+    <h1>¡Bienvenido, Jugador!</h1>
+
+    {% if selected_character %}
+        <div class="selected-character-card">
+            <h2>Jugando con: {{ selected_character.state.nombre }}</h2>
+            <p><strong>Clase:</strong> {{ selected_character.state.clase }} | <strong>Nivel:</strong> {{ selected_character.state.nivel }}</p>
+            <p><strong>Vida:</strong> {{ selected_character.state.vida }} | <strong>Maná:</strong> {{ selected_character.state.mana }} | <strong>Dinero:</strong> {{ selected_character.state.dinero }}</p>
+            <p><strong>Fuerza:</strong> {{ selected_character.state.fuerza }} | <strong>Ingenio:</strong> {{ selected_character.state.ingenio }} | <strong>Corazón:</strong> {{ selected_character.state.corazon }}</p>
+            <p><strong>Defensa:</strong> {{ selected_character.state.defensa }}</p>
+            <p><strong>Arma:</strong> {{ selected_character.state.arma_equipada }} | <strong>Armadura:</strong> {{ selected_character.state.armadura_equipada }}</p>
+            <p><strong>Inventario:</strong> {{ selected_character.state.inventario | join(', ') }}</p>
+            <p><strong>Habilidades:</strong> {{ selected_character.state.habilidades | join(', ') }}</p>
+            <p><strong>Canciones Aprendidas:</strong> {{ selected_character.state.canciones_aprendidas | join(', ') }}</p>
+            <!-- Aquí puedes añadir más detalles o controles para el personaje seleccionado -->
+        </div>
+    {% else %}
+        <div class="content-wrapper">
+            <p class="no-characters">No has seleccionado ningún personaje para jugar.</p>
+        </div>
+    {% endif %}
+
+    <div class="character-list-container">
+        <h2>Tus Personajes</h2>
+        {% if characters %}
+            <ul class="character-list">
+                {% for character in characters %}
+                    <li class="character-item">
+                        <h3>{{ character.state.nombre }} ({{ character.state.clase }})</h3>
+                        <p><strong>Nivel:</strong> {{ character.state.nivel }}</p>
+                        <p><strong>Vida:</strong> {{ character.state.vida }} | <strong>Maná:</strong> {{ character.state.mana }} | <strong>Dinero:</strong> {{ character.state.dinero }}</p>
+                        <!-- Otros detalles del personaje -->
+                        <form action="/select-character" method="post">
+                            <input type="hidden" name="player_id" value="{{ character.player_id }}" />
+                            <button type="submit">Jugar con este personaje</button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="no-characters">No tienes personajes aún.</p>
+        {% endif %}
+        <a href="/create-character" class="action-button">Crear Nuevo Personaje</a>
+    </div>
+
+    <a href="/logout" class="logout-button">Cerrar Sesión</a>
 
     <script>
-        window.TOKEN = "{{ token }}";
+        let ws;
+        const token = "{{ token }}"; // Get token from Jinja2 context
+        const selectedPlayerId = "{{ selected_character.player_id if selected_character else '' }}"; // Get selected player ID
+
+        function connectWebSocket() {
+            if (selectedPlayerId) {
+                ws = new WebSocket(`ws://localhost:8000/ws`);
+
+                ws.onopen = (event) => {
+                    console.log("WebSocket connected!");
+                    ws.send(JSON.stringify({
+                        type: "connect",
+                        token: token,
+                        role: "player",
+                        player_id: selectedPlayerId // Send selected player ID
+                    }));
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    console.log("Received:", data);
+                    if (data.type === "characters_list") {
+                        console.log("Characters list received (should not happen often for selected player):", data.characters);
+                    } else if (data.type === "no_characters") {
+                        console.log(data.message);
+                    } else if (data.type === "player_state_update") {
+                        // Handle specific updates for the selected character
+                        console.log("Selected character state updated:", data.state);
+                        // You would update the UI elements for the selected character here
+                    }
+                    // Handle other message types (e.g., commands from master)
+                };
+
+                ws.onclose = (event) => {
+                    console.log("WebSocket disconnected. Reconnecting in 5 seconds...");
+                    setTimeout(connectWebSocket, 5000); // Attempt to reconnect
+                };
+
+                ws.onerror = (error) => {
+                    console.error("WebSocket error:", error);
+                    ws.close(); // Close to trigger reconnect
+                };
+            } else {
+                console.log("No character selected. WebSocket will not connect.");
+            }
+        }
+
+        // Connect WebSocket when the page loads, if a character is selected
+        window.onload = connectWebSocket;
+
+        // Example of sending a player update (you'd trigger this from a form/button)
+        // function sendPlayerUpdate(newState) {
+        //     if (ws && ws.readyState === WebSocket.OPEN) {
+        //         ws.send(JSON.stringify({
+        //             type: "player_update",
+        //             player_id: selectedPlayerId,
+        //             state: newState
+        //         }));
+        //     } else {
+        //         console.warn("WebSocket not open. Cannot send update.");
+        //     }
+        // }
     </script>
-    <script src="/static/player.js"></script>
 </body>
 </html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <title>DND Helper - Crear Personaje</title>
+    <link rel="icon" type="image/x-icon" href="/static/icons/favicon.ico">
+    <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+    <h1>Crear Nuevo Personaje</h1>
+    <form action="/create-character" method="post">
+        <div class="form-group">
+            <label for="nombre">Nombre del Personaje:</label>
+            <input type="text" id="nombre" name="nombre" required />
+        </div>
+        <div class="form-group">
+            <label for="clase">Clase:</label>
+            <input type="text" id="clase" name="clase" required />
+        </div>
+        <div class="form-group">
+            <label for="nivel">Nivel:</label>
+            <input type="number" id="nivel" name="nivel" value="1" min="1" required />
+        </div>
+        <div class="form-group">
+            <label for="fuerza">Puntos de Fuerza:</label>
+            <input type="number" id="fuerza" name="fuerza" value="0" min="0" max="4" required />
+        </div>
+        <div class="form-group">
+            <label for="ingenio">Puntos de Ingenio:</label>
+            <input type="number" id="ingenio" name="ingenio" value="0" min="0" max="4" required />
+        </div>
+        <div class="form-group">
+            <label for="corazon">Puntos de Corazón:</label>
+            <input type="number" id="corazon" name="corazon" value="0" min="0" max="4" required />
+        </div>
+        <div class="form-group">
+            <label for="vida">Vida:</label>
+            <input type="number" id="vida" name="vida" value="100" min="0" required />
+        </div>
+        <div class="form-group">
+            <label for="mana">Maná:</label>
+            <input type="number" id="mana" name="mana" value="50" min="0" required />
+        </div>
+        <div class="form-group">
+            <label for="dinero">Dinero:</label>
+            <input type="number" id="dinero" name="dinero" value="0" min="0" required />
+        </div>
+        <div class="form-group">
+            <label for="defensa">Defensa:</label>
+            <input type="number" id="defensa" name="defensa" value="0" min="0" required />
+        </div>
+        <div class="form-group">
+            <label for="arma_equipada">Arma Equipada:</label>
+            <input type="text" id="arma_equipada" name="arma_equipada" value="Ninguna" />
+        </div>
+        <div class="form-group">
+            <label for="armadura_equipada">Armadura Equipada:</label>
+            <input type="text" id="armadura_equipada" name="armadura_equipada" value="Ninguna" />
+        </div>
+        <div class="form-group full-width">
+            <label for="inventario">Inventario (separar por comas):</label>
+            <textarea id="inventario" name="inventario"></textarea>
+        </div>
+        <div class="form-group full-width">
+            <label for="habilidades">Habilidades (separar por comas):</label>
+            <textarea id="habilidades" name="habilidades"></textarea>
+        </div>
+        <div class="form-group full-width">
+            <label for="canciones_aprendidas">Canciones Aprendidas (separar por comas):</label>
+            <textarea id="canciones_aprendidas" name="canciones_aprendidas"></textarea>
+        </div>
+        <button type="submit">Crear Personaje</button>
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+    </form>
+    <a href="/player">Volver a la lista de personajes</a>
+</body>
+</html>

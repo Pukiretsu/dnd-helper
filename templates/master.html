@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,10 +7,14 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <p><a href="/lobby">Regresar </a></p>
-
-    <h1>Panel de Máster</h1>
-    <div id="players-container"></div>
+    <div class="content-wrapper"> <!-- Wrap master content for consistent styling -->
+        <p><a href="/lobby" class="action-button">Regresar</a></p>
+        <h1>Panel de Máster</h1>
+        <div id="players-container">
+            <!-- Active players will be rendered here by master.js -->
+            <p class="no-characters">Cargando jugadores activos...</p>
+        </div>
+    </div>
 
     <script>
         window.TOKEN = "{{ token }}";

@@ -7,15 +7,17 @@
     <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-    <h1>Login</h1>
-    <form action="/login" method="post">
-        <label>Usuario: <input type="text" name="username" required /></label><br />
-        <label>Contraseña: <input type="password" name="password" required /></label><br />
-        <button type="submit">Entrar</button>
-    </form>
-    <p>¿No tienes cuenta? Regístrate <a href="/register">aquí</a></p>
-    {% if error %}
-    <p style="color:red;">{{ error }}</p>
-    {% endif %}
+    <div class="content-wrapper">
+        <h1>Login</h1>
+        <form action="/login" method="post">
+            <label>Usuario: <input type="text" name="username" required /></label><br />
+            <label>Contraseña: <input type="password" name="password" required /></label><br />
+            <button type="submit">Entrar</button>
+        </form>
+        <p>¿No tienes cuenta? Regístrate <a href="/register">aquí</a></p>
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+    </div>
 </body>
 </html>

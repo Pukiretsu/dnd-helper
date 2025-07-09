@@ -1,52 +1,41 @@
-// player.js
+// WebSocket logic for player updates (if needed)
+const token = "{{ token }}"; // Get token from Jinja2 context
 const ws = new WebSocket("ws://" + window.location.host + "/ws");
 
-ws.onopen = () => {
-    // Obtenemos el token de la cookie o desde una variable inyectada (si cookie HttpOnly, pasa el token en template)
-    // Aquí se asume que el token viene inyectado en el template en window.TOKEN
-    const token = window.TOKEN || null;
-
-    ws.send(JSON.stringify({
-        type: "connect",
-        role: "player",
-        token: token
-    }));
+ws.onopen = (event) => {
+    console.log("WebSocket connected!");
+    ws.send(JSON.stringify({ type: "connect", token: token, role: "player" }));
 };
 
 ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
-
+    console.log("Received:", data);
     if (data.type === "characters_list") {
-        renderCharacters(data.characters);
+        // Update UI with the list of characters
+        // You might want to dynamically update the character-section here
+        console.log("Characters received:", data.characters);
+        // For a full dynamic update, you would clear and re-render the list
+        // For simplicity, this example just logs it.
+        // A full implementation would involve more complex DOM manipulation.
     } else if (data.type === "no_characters") {
-        alert(data.message);
-        // Aquí podrías mostrar un botón para crear personaje nuevo
-        showCreateCharacterButton();
-    } else if (data.error) {
-        console.error("Error:", data.error);
-        ws.close();
+        console.log(data.message);
     }
+    // Handle other message types (e.g., updates to a specific character's state)
 };
 
-ws.onclose = () => {
-    console.log("WebSocket connection closed");
+ws.onclose = (event) => {
+    console.log("WebSocket disconnected.");
 };
 
-function renderCharacters(characters) {
-    const list = document.getElementById("characters-list");
-    list.innerHTML = "";
-    characters.forEach(char => {
-        const li = document.createElement("li");
-        li.textContent = `ID: ${char.player_id} - Vida: ${char.state.vida} - Mana: ${char.state.mana} - dinero ${char.state.dinero}`;
-        list.appendChild(li);
-    });
-}
+ws.onerror = (error) => {
+    console.error("WebSocket error:", error);
+};
 
-function showCreateCharacterButton() {
-    const btn = document.getElementById("create-character-btn");
-    btn.style.display = "block";
-    btn.onclick = () => {
-        // Lógica para crear personaje nuevo vía fetch / API o WebSocket
-        alert("Función crear personaje no implementada aún");
-    };
-}
+// Example of sending a player update (you'd trigger this from a form/button)
+// function sendPlayerUpdate(characterId, newState) {
+//     ws.send(JSON.stringify({
+//         type: "player_update",
+//         player_id: characterId,
+//         state: newState
+//     }));
+// }
