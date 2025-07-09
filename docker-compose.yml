@@ -1,0 +1,12 @@
+services:
+  web: # Nombre de tu servicio (puedes cambiarlo)
+    build: . # Le dice a Docker Compose que construya la imagen desde el Dockerfile en el directorio actual
+    ports:
+      - "8000:8000" # Mapea el puerto 8000 del host al puerto 8000 del contenedor
+    volumes:
+      # Monta un volumen para la persistencia de la base de datos SQLite
+      # Esto mapea la carpeta 'app_data' en tu máquina local a '/app/data' dentro del contenedor
+      # Así, 'sessions.db' se guardará en ./app_data/sessions.db en tu host
+      - ./app_data:/app/data
+    # Opcional: Reinicia el contenedor si se detiene inesperadamente
+    restart: unless-stopped
