@@ -1,9 +1,9 @@
 import asyncio
 import json
+from time import timezone
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
-
+from datetime import UTC, datetime, timedelta
 import aiosqlite
 import uvicorn
 from fastapi import Cookie, FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -13,8 +13,6 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-
-print(">>>servidor corriendo<<<<")
 
 # Configure the password hashing context
 # We use bcrypt as the recommended hashing algorithm
@@ -30,8 +28,11 @@ connections = {} # Stores active WebSocket connections: {user_uuid: {"ws": WebSo
 db_file = "sessions.db"
 
 tags = {
-    "server": "\033[96mSERVER\033[0m",
-    "db": "\033[92mDATABASE\033[0m"
+    "server":        "    -->> [\033[96mSERVER\033[0m]   ",
+    "db":            "    -->> [\033[93mDATABASE\033[0m] ",
+    "websocket":     "    -->> [\033[92mWEBSOCKET\033[0m]",
+    "app_error":     "    -->> [\033[91mAPP\033[0m]      ",
+    "app_log":       "    -->> [\033[95mAPP\033[0m]      ",
 }
 
 ## Auth Functions
@@ -46,7 +47,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
         str: The encoded JWT token.
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(UTC) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -96,7 +97,7 @@ async def init_db():
             )
         """)
         await db.commit()
-    print(f"--> [{tags['db']}] Database initialized.")
+    print(f"{tags['db']} Database initialized.")
 
 async def save_player_state(player_id, state):
     """Saves or updates a player's state in the database."""
@@ -159,7 +160,7 @@ async def broadcast_active_players():
         for user_uuid in to_remove:
             if user_uuid in connections: # Check again in case it was already removed
                 del connections[user_uuid]
-                print(f"Removed disconnected master: {user_uuid}")
+                print(f"{tags['websocket']} Removed disconnected master: {user_uuid}")
                 
         await asyncio.sleep(5) # Broadcast every 5 seconds
 
@@ -171,13 +172,13 @@ async def lifespan(app: FastAPI):
     Context manager for application startup and shutdown events.
     Initializes the database and starts the active players broadcast task.
     """
-    print(f"--> [{tags['server']}] Application startup event: Initializing database...")
+    print(f"{tags['server']} Application startup event: Initializing database...")
     await init_db()
     # Start the background task for broadcasting active players
     asyncio.create_task(broadcast_active_players())
     yield
     # Code here runs on application shutdown (e.g., closing database connections)
-    print(f"--> [{tags['server']}] Application shutdown event: Performing cleanup...")
+    print(f"{tags['server']} Application shutdown event: Performing cleanup...")
 
 # Initialize FastAPI app with the new lifespan handler
 app = FastAPI(lifespan=lifespan)
@@ -242,9 +243,11 @@ async def register_post(
         # Check if user already exists
         cursor = await db.execute("SELECT 1 FROM users WHERE username = ?", (username,))
         if await cursor.fetchone():
+            print(f"{tags['app_error']} El usuario: {username} ya existe.")
             return templates.TemplateResponse("register.html", {
                 "request": request,
                 "error": "¡El usuario ya existe!"
+                
             })
         
         # Hash the password
@@ -278,6 +281,7 @@ async def register_post(
         await db.commit()
 
     # Redirect to login
+    print(f"{tags['app_log']} Usuario: {username} creado con exito. UUID: {user_uuid}")
     return RedirectResponse(url="/login", status_code=303)
 
 @app.get("/login")
@@ -303,16 +307,35 @@ async def login_post(request: Request, username: str = Form(...), password: str 
                 token = create_access_token({"sub": user_uuid})
                 response = RedirectResponse(url="/lobby", status_code=303)
                 response.set_cookie("access_token", token, httponly=True, samesite="strict")
+                print(f"{tags['app_log']} User: {username} UUID: {user_uuid} Logged sucessfully.")
                 return response
             else:
+                print(f"{tags['app_error']} Usuario: {username} o contraseña invalidos.")
                 return templates.TemplateResponse("login.html", {"request": request, "error": "Usuario o contraseña inválidos"})
         else:
             # User does not exist, return an error
-            return templates.TemplateResponse("login.html", {"request": request, "error": "El usuario no existe"})
+            print(f"{tags['app_error']} Usuario: {username} no existe.")
+            return templates.TemplateResponse("login.html", {"request": request, "error": "Usuario o contraseña inválidos"})
 
 @app.get("/logout")
-async def logout():
+async def logout(request: Request): # Add request parameter to access cookies
     """Logs out the user by deleting the access token cookie."""
+    user_uuid = None
+    token = request.cookies.get("access_token")
+    if token:
+        user_uuid = verify_token(token)
+        if user_uuid:
+            # Optionally, retrieve username from DB if needed for logging
+            async with aiosqlite.connect(db_file) as db:
+                cursor = await db.execute("SELECT username FROM users WHERE uuid = ?", (user_uuid,))
+                username_row = await cursor.fetchone()
+                username = username_row[0] if username_row else "Unknown User"
+            print(f"{tags['app_log']} User: {username} UUID: {user_uuid} Logged out successfully.")
+        else:
+            print(f"{tags['app_error']} Logout attempt with invalid token.")
+    else:
+        print(f"{tags['app_error']} Logout attempt without an access token.")
+
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("access_token")
     return response
@@ -344,9 +367,10 @@ async def websocket_endpoint(websocket: WebSocket):
             if not user_uuid:
                 await websocket.send_json({"error": "Token inválido"})
                 await websocket.close()
+                print(f"{tags['websocket']} Connection rejected: Invalid token.")
                 return
-
             if data["role"] == "master":
+                print(f"{tags['websocket']} connected: {user_uuid} as: master")
                 connections[user_uuid] = {"ws": websocket, "role": "master"}
                 players_state = await get_active_players_state()
                 await websocket.send_json({
@@ -356,6 +380,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif data["role"] == "player":
                 connections[user_uuid] = {"ws": websocket, "role": "player"}
+                print(f"{tags['websocket']} connected: {user_uuid} as: player")
                 # Query characters for the connected player
                 async with aiosqlite.connect(db_file) as db:
                     cursor = await db.execute(
@@ -381,7 +406,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # For players, this might be state updates. For masters, it might be commands.
             # You'll need to add logic here to handle different message types.
             received_data = await websocket.receive_json()
-            print(f"Received data from {user_uuid}: {received_data}")
+            print(f"{tags['websocket']} Received data from {user_uuid}: {received_data}")
 
             # Example: If a player sends an update to their state
             if user_uuid and connections.get(user_uuid, {}).get("role") == "player" and received_data.get("type") == "player_update":
@@ -394,16 +419,16 @@ async def websocket_endpoint(websocket: WebSocket):
                         owner_row = await cursor.fetchone()
                         if owner_row and owner_row[0] == user_uuid:
                             await save_player_state(player_id_to_update, new_state)
-                            print(f"Player {player_id_to_update} state updated by {user_uuid}")
+                            print(f"{tags['app_log']} Player {player_id_to_update} state updated by {user_uuid}")
                         else:
-                            print(f"Unauthorized state update attempt for player {player_id_to_update} by {user_uuid}")
+                            print(f"{tags['app_error']} Unauthorized state update attempt for player {player_id_to_update} by {user_uuid}")
             
     except WebSocketDisconnect:
         if user_uuid and user_uuid in connections:
             del connections[user_uuid]
-            print(f"WebSocket disconnected: {user_uuid}")
+            print(f"{tags['websocket']} Disconnected: {user_uuid}")
     except Exception as e:
-        print(f"WebSocket error for {user_uuid}: {e}")
+        print(f"{tags['app_error']} WebSocket error for {user_uuid}: {e}")
         if user_uuid and user_uuid in connections:
             del connections[user_uuid]
 
