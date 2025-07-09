@@ -8,9 +8,14 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1>Jugador</h1>
-    <div id="player-info"></div>
     <p><a href="/lobby">Regresar </a></p>
+    <h1>Bienvenido Jugador</h1>
+    <ul id="characters-list"></ul>
+    <button id="create-character-btn" style="display:none;">Crear nuevo personaje</button>
+
+    <script>
+        window.TOKEN = "{{ token }}";
+    </script>
     <script src="/static/player.js"></script>
 </body>
 </html>
