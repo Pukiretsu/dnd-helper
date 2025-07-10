@@ -24,14 +24,16 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def verify_token(token: str):
+def verify_token(token: str | None): 
     """
     Verifies a JWT token and returns the subject (user_uuid) if valid.
     Args:
-        token (str): The JWT token to verify.
+        token (str | None): The JWT token to verify.
     Returns:
         str | None: The user_uuid if the token is valid, otherwise None.
     """
+    if not token:
+        return None
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload.get("sub")

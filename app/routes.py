@@ -2,8 +2,7 @@ import json
 import uuid
 from fastapi import APIRouter, Form, Request, HTTPException, Cookie
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.templating import Jinja2Templates # Import Jinja2Templates (needed for templates)
 
 from config import TAGS, ACCESS_TOKEN_EXPIRE_MINUTES
 from auth import pwd_context, create_access_token, verify_token, get_current_user, authenticate_user, get_user_info_for_logout
@@ -16,7 +15,7 @@ from database import (
 )
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="templates") # Initialize templates here too, as routes use them
 
 ## General Routes
 
@@ -28,7 +27,8 @@ async def get_index_page(request: Request):
 @router.get("/lobby")
 async def lobby_page(request: Request):
     """Renders the lobby page, requiring authentication."""
-    user_uuid = get_current_user(request) # This will handle redirection if not authenticated
+    # get_current_user ya maneja la redirección a /login si no está autenticado
+    user_uuid = get_current_user(request)
     return templates.TemplateResponse("lobby.html", {"request": request, "user_uuid": user_uuid})
 
 ## Player Routes
@@ -46,6 +46,7 @@ async def get_player_page(
     """
     user_uuid = verify_token(access_token)
     if not user_uuid:
+        # Si no hay token o es inválido, redirige al login
         return RedirectResponse("/login")
 
     user_characters = await get_characters_by_owner_uuid(user_uuid)
@@ -61,7 +62,7 @@ async def get_player_page(
         "request": request,
         "token": access_token,
         "characters": user_characters,
-        "selected_character": selected_character # Pass the selected character to the template
+        "selected_character": selected_character 
     })
 
 @router.post("/select-character")
@@ -76,11 +77,17 @@ async def select_character_post(
     """
     user_uuid = verify_token(access_token)
     if not user_uuid:
-        raise HTTPException(status_code=401, detail="No autenticado")
+        # Si no hay token o es inválido, redirige al login
+        return RedirectResponse("/login")
 
     # Verify that the player_id belongs to the authenticated user_uuid
     if not await check_player_ownership(player_id, user_uuid):
-        raise HTTPException(status_code=403, detail="Personaje no encontrado o no pertenece a este usuario.")
+        return templates.TemplateResponse("player.html", {
+            "request": request,
+            "error": "Personaje no encontrado o no pertenece a este usuario.",
+            "characters": await get_characters_by_owner_uuid(user_uuid), # Re-render characters
+            "token": access_token
+        })
 
     response = RedirectResponse(url="/player", status_code=303)
     # Set a new cookie for the selected player ID
@@ -98,6 +105,7 @@ async def get_master_page(request: Request, access_token: str = Cookie(None)):
     """
     user_uuid = verify_token(access_token)
     if not user_uuid:
+        # Si no hay token o es inválido, redirige al login
         return RedirectResponse("/login")
     
     # Note: active_players_data is now managed by the websocket_manager and broadcast.
@@ -211,7 +219,7 @@ async def create_character_post(
     """Handles the creation of a new character."""
     user_uuid = verify_token(access_token)
     if not user_uuid:
-        raise HTTPException(status_code=401, detail="No autenticado")
+        return RedirectResponse("/login")
 
     player_id = str(uuid.uuid4())
     
@@ -221,7 +229,7 @@ async def create_character_post(
     parsed_canciones_aprendidas = [item.strip() for item in canciones_aprendidas.split(',') if item.strip()]
 
     character_state = {
-        "player_id": player_id, # Redundant but kept for consistency with current state structure
+        "player_id": player_id,
         "nombre": nombre,
         "clase": clase,
         "nivel": nivel,
