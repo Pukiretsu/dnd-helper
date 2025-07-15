@@ -1,21 +1,28 @@
+# routes.py
+
 import json
 import uuid
+import aiosqlite
 from fastapi import APIRouter, Form, Request, HTTPException, Cookie
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates # Import Jinja2Templates (needed for templates)
+from fastapi.templating import Jinja2Templates
 
 from config import TAGS, ACCESS_TOKEN_EXPIRE_MINUTES
-from auth import pwd_context, create_access_token, verify_token, get_current_user, authenticate_user, get_user_info_for_logout
+from auth import pwd_context, create_access_token, verify_token, get_current_user, authenticate_user, get_user_info_for_logout, get_username_by_uuid # Import get_username_by_uuid
 from database import (
     get_user_by_username,
     create_new_user,
     create_initial_player_character,
     get_characters_by_owner_uuid,
-    check_player_ownership
+    check_player_ownership,
+    get_lobbies_by_master_uuid,
+    get_lobby_db,
+    load_player_state_by_id,
+    get_username_for_player_id
 )
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates") # Initialize templates here too, as routes use them
+templates = Jinja2Templates(directory="templates")
 
 ## General Routes
 
@@ -27,7 +34,6 @@ async def get_index_page(request: Request):
 @router.get("/lobby")
 async def lobby_page(request: Request):
     """Renders the lobby page, requiring authentication."""
-    # get_current_user ya maneja la redirección a /login si no está autenticado
     user_uuid = get_current_user(request)
     return templates.TemplateResponse("lobby.html", {"request": request, "user_uuid": user_uuid})
 
@@ -37,7 +43,7 @@ async def lobby_page(request: Request):
 async def get_player_page(
     request: Request,
     access_token: str = Cookie(None),
-    selected_player_id: str = Cookie(None, alias="selected_player_id_cookie") # Read the cookie
+    selected_player_id: str = Cookie(None, alias="selected_player_id_cookie")
 ):
     """
     Renders the player page, showing all characters owned by the authenticated user
@@ -46,8 +52,10 @@ async def get_player_page(
     """
     user_uuid = verify_token(access_token)
     if not user_uuid:
-        # Si no hay token o es inválido, redirige al login
         return RedirectResponse("/login")
+
+    # Get username for welcome message
+    username = await get_username_by_uuid(user_uuid)
 
     user_characters = await get_characters_by_owner_uuid(user_uuid)
     selected_character = None
@@ -57,12 +65,30 @@ async def get_player_page(
             if char["player_id"] == selected_player_id:
                 selected_character = char
                 break
+    
+    # Get active lobbies for player to join
+    active_lobbies = []
+    async with aiosqlite.connect("data/sessions.db") as db:
+        cursor = await db.execute("SELECT lobby_id, master_uuid, lobby_name, status FROM lobbies WHERE status IN ('waiting', 'in_progress')")
+        lobbies_data = await cursor.fetchall()
+
+    for row in lobbies_data:
+        master_username = await get_username_by_uuid(row[1]) # Use get_username_by_uuid for master's name
+        active_lobbies.append({
+            "lobby_id": row[0],
+            "master_uuid": row[1],
+            "lobby_name": row[2],
+            "status": row[3],
+            "master_username": master_username if master_username else "Unknown Master"
+        })
 
     return templates.TemplateResponse("player.html", {
         "request": request,
         "token": access_token,
+        "username": username, # Pass username to template
         "characters": user_characters,
-        "selected_character": selected_character 
+        "selected_character": selected_character,
+        "active_lobbies": active_lobbies
     })
 
 @router.post("/select-character")
@@ -77,20 +103,38 @@ async def select_character_post(
     """
     user_uuid = verify_token(access_token)
     if not user_uuid:
-        # Si no hay token o es inválido, redirige al login
         return RedirectResponse("/login")
 
-    # Verify that the player_id belongs to the authenticated user_uuid
     if not await check_player_ownership(player_id, user_uuid):
+        username = await get_username_by_uuid(user_uuid)
+        user_characters = await get_characters_by_owner_uuid(user_uuid)
+        active_lobbies = []
+        lobbies_data = []
+        async with aiosqlite.connect("data/sessions.db") as db:
+            cursor = await db.execute("SELECT lobby_id, master_uuid, lobby_name, status FROM lobbies WHERE status IN ('waiting', 'in_progress')")
+            lobbies_data = await cursor.fetchall()
+
+        for row in lobbies_data:
+            master_username = await get_username_by_uuid(row[1])
+            active_lobbies.append({
+                "lobby_id": row[0],
+                "master_uuid": row[1],
+                "lobby_name": row[2],
+                "status": row[3],
+                "master_username": master_username if master_username else "Unknown Master"
+            })
+
         return templates.TemplateResponse("player.html", {
             "request": request,
             "error": "Personaje no encontrado o no pertenece a este usuario.",
-            "characters": await get_characters_by_owner_uuid(user_uuid), # Re-render characters
-            "token": access_token
+            "username": username,
+            "characters": user_characters,
+            "token": access_token,
+            "selected_character": None,
+            "active_lobbies": active_lobbies
         })
 
     response = RedirectResponse(url="/player", status_code=303)
-    # Set a new cookie for the selected player ID
     response.set_cookie(key="selected_player_id_cookie", value=player_id, httponly=True, samesite="strict", max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
     print(f"{TAGS['app_log']} User {user_uuid} selected player: {player_id}")
     return response
@@ -100,21 +144,100 @@ async def select_character_post(
 @router.get("/master")
 async def get_master_page(request: Request, access_token: str = Cookie(None)):
     """
-    Renders the master page, showing only active players.
-    Active players are those currently connected via WebSocket.
+    Renders the master page, showing active lobbies and players ready to join.
     """
     user_uuid = verify_token(access_token)
     if not user_uuid:
-        # Si no hay token o es inválido, redirige al login
         return RedirectResponse("/login")
     
-    # Note: active_players_data is now managed by the websocket_manager and broadcast.
-    # This route will initially render the page, and master.js will fetch active players via WebSocket.
+    master_lobbies = await get_lobbies_by_master_uuid(user_uuid)
+
     return templates.TemplateResponse("master.html", {
         "request": request,
         "token": access_token,
-        "active_players": {} # Initial empty dict, data will come via WebSocket
+        "master_uuid": user_uuid,
+        "master_lobbies": master_lobbies
     })
+
+## Game Routes
+
+@router.get("/game-player")
+async def game_player_page(
+    request: Request,
+    access_token: str = Cookie(None),
+    selected_player_id: str = Cookie(None, alias="selected_player_id_cookie"),
+    lobby_id: str = ""
+):
+    """
+    Renders the in-game page for a player.
+    """
+    user_uuid = verify_token(access_token)
+    if not user_uuid:
+        return RedirectResponse("/login")
+    
+    if not selected_player_id:
+        return RedirectResponse("/player", status_code=303)
+
+    player_character_state = await load_player_state_by_id(selected_player_id)
+    if not player_character_state or not await check_player_ownership(selected_player_id, user_uuid):
+        return RedirectResponse("/player", status_code=303)
+
+    # Verify lobby_id and status if player is trying to join a game
+    if lobby_id:
+        lobby_info = await get_lobby_db(lobby_id)
+        if not lobby_info or lobby_info["status"] not in ["in_progress"]: # Only allow if in_progress
+             return RedirectResponse("/player", status_code=303) # Redirect if lobby not active
+        # Ensure player is actually in this lobby's player list (for robustness)
+        if selected_player_id not in lobby_info["players_in_lobby"]:
+            return RedirectResponse("/player", status_code=303)
+
+
+    return templates.TemplateResponse("game_player.html", {
+        "request": request,
+        "token": access_token,
+        "character": player_character_state,
+        "lobby_id": lobby_id
+    })
+
+@router.get("/game-master")
+async def game_master_page(
+    request: Request,
+    access_token: str = Cookie(None),
+    lobby_id: str = ""
+):
+    """
+    Renders the in-game administration page for the master.
+    """
+    user_uuid = verify_token(access_token)
+    if not user_uuid:
+        return RedirectResponse("/login")
+
+    if not lobby_id:
+        return RedirectResponse("/master", status_code=303)
+
+    lobby_info = await get_lobby_db(lobby_id)
+    if not lobby_info or lobby_info["master_uuid"] != user_uuid or lobby_info["status"] not in ["in_progress"]:
+        return RedirectResponse("/master", status_code=303)
+
+    players_in_lobby_details = []
+    for player_id in lobby_info["players_in_lobby"]:
+        player_state = await load_player_state_by_id(player_id)
+        username = await get_username_for_player_id(player_id)
+        if player_state:
+            players_in_lobby_details.append({
+                "player_id": player_id,
+                "username": username,
+                "state": player_state
+            })
+
+    return templates.TemplateResponse("game_master.html", {
+        "request": request,
+        "token": access_token,
+        "lobby_id": lobby_id,
+        "lobby_info": lobby_info,
+        "players_in_lobby_details": players_in_lobby_details
+    })
+
 
 ## Auth Handlers
 
@@ -130,7 +253,6 @@ async def register_post(
     password: str = Form(...),
 ):
     """Handles user registration, hashing the password and creating initial player state."""
-    # Check if user already exists
     if await get_user_by_username(username):
         print(f"{TAGS['app_error']} El usuario: {username} ya existe.")
         return templates.TemplateResponse("register.html", {
@@ -138,13 +260,8 @@ async def register_post(
             "error": "¡El usuario ya existe!"
         })
     
-    # Hash the password
     hashed_password = pwd_context.hash(password)
-    
-    # Assign a UUID for the user
     user_uuid = str(uuid.uuid4())
-    
-    # Insert into users table with hashed password
     await create_new_user(username, hashed_password, user_uuid)
 
     print(f"{TAGS['app_log']} Usuario: {username} creado con exito. UUID: {user_uuid}")
@@ -183,7 +300,7 @@ async def logout(request: Request):
 
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("access_token")
-    response.delete_cookie("selected_player_id_cookie") # Also delete the selected_player_id cookie on logout
+    response.delete_cookie("selected_player_id_cookie")
     return response
 
 ## Character Creation Routes
@@ -212,9 +329,9 @@ async def create_character_post(
     defensa: int = Form(...),
     arma_equipada: str = Form(...),
     armadura_equipada: str = Form(...),
-    inventario: str = Form(""), # Expect comma-separated string
-    habilidades: str = Form(""), # Expect comma-separated string
-    canciones_aprendidas: str = Form(""), # Expect comma-separated string
+    inventario: str = Form(""),
+    habilidades: str = Form(""),
+    canciones_aprendidas: str = Form(""),
 ):
     """Handles the creation of a new character."""
     user_uuid = verify_token(access_token)
@@ -223,7 +340,6 @@ async def create_character_post(
 
     player_id = str(uuid.uuid4())
     
-    # Parse comma-separated strings into lists
     parsed_inventario = [item.strip() for item in inventario.split(',') if item.strip()]
     parsed_habilidades = [item.strip() for item in habilidades.split(',') if item.strip()]
     parsed_canciones_aprendidas = [item.strip() for item in canciones_aprendidas.split(',') if item.strip()]
@@ -251,7 +367,6 @@ async def create_character_post(
         await create_initial_player_character(player_id, user_uuid, character_state)
         print(f"{TAGS['app_log']} Personaje '{nombre}' creado por usuario {user_uuid} (Player ID: {player_id}).")
         
-        # After creating a character, automatically select it for the user
         response = RedirectResponse(url="/player", status_code=303)
         response.set_cookie(key="selected_player_id_cookie", value=player_id, httponly=True, samesite="strict", max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
         return response

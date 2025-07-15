@@ -7,10 +7,64 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="content-wrapper">
-        <h1>Dnd helper</h1>
-        <p><a href="/login" class="action-button">Entrar</a></p>
-        <p><a href="/register" class="action-button">Registrarse</a></p>
+    <!-- Fondo animado con estrellas usando canvas -->
+    <canvas id="bg-canvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:0;"></canvas>
+    <div class="content-wrapper" style="position:relative; z-index:2;">
+        <!-- Logo Placeholder -->
+        <img src="/static/assets/logo.png" alt="Logo DND" style="width:120px; margin-bottom:20px; filter:drop-shadow(0 0 20px #BB86FC);">
+        <h1 style="letter-spacing:2px; font-family:'Cinzel',serif;">DND Helper</h1>
+        <h2 style="font-size:1.3em; color:#03DAC6; margin-bottom:30px; text-shadow:0 2px 8px #000; font-family:'Inter',sans-serif;">¡Prepara tu aventura y únete a la partida!</h2>
+        <div style="display:flex; gap:30px; justify-content:center;">
+            <a href="/login" class="action-button" style="display:flex; align-items:center; gap:10px;">
+                <img src="/static/icons/login.svg" alt="Login" style="width:28px; height:28px; filter:drop-shadow(0 0 6px #BB86FC);">
+                Entrar
+            </a>
+            <a href="/register" class="action-button" style="display:flex; align-items:center; gap:10px;">
+                <!-- Icono Register Placeholder -->
+                <img src="/static/icons/register.svg" alt="Register" style="width:28px; height:28px; filter:drop-shadow(0 0 6px #BB86FC);">
+                Registrarse
+            </a>
+        </div>
     </div>
+    <script>
+    // Fondo animado de estrellas
+    const canvas = document.getElementById('bg-canvas');
+    const ctx = canvas.getContext('2d');
+    let w, h;
+    function resize() {
+        w = window.innerWidth;
+        h = window.innerHeight;
+        canvas.width = w;
+        canvas.height = h;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+    // Generar estrellas
+    const stars = Array.from({length:80}, () => ({
+        x: Math.random()*w,
+        y: Math.random()*h,
+        r: Math.random()*1.5+0.5,
+        dx: (Math.random()-0.5)*0.2,
+        dy: (Math.random()-0.5)*0.2
+    }));
+    function drawStars() {
+        ctx.clearRect(0,0,w,h);
+        for(const s of stars) {
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+            ctx.fillStyle = '#BB86FC';
+            ctx.shadowColor = '#BB86FC';
+            ctx.shadowBlur = 8;
+            ctx.fill();
+            s.x += s.dx;
+            s.y += s.dy;
+            if(s.x<0) s.x=w; if(s.x>w) s.x=0;
+            if(s.y<0) s.y=h; if(s.y>h) s.y=0;
+        }
+        requestAnimationFrame(drawStars);
+    }
+    drawStars();
+    </script>
 </body>
 </html>
+

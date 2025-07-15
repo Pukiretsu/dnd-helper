@@ -3,7 +3,6 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-import dotenv
 import uvicorn
 from fastapi import FastAPI, WebSocket, Request # Import Request
 from fastapi.staticfiles import StaticFiles
@@ -66,6 +65,5 @@ async def websocket_endpoint(websocket: WebSocket):
     await handle_websocket_connection(websocket)
 
 if __name__ == "__main__":
-    dotenv.load_dotenv("../.env")
     # Run the FastAPI application using Uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

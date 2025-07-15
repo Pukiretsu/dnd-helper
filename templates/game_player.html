@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>DND Helper - En Partida (Jugador)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="/static/icons/favicon.ico">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .in-game-card {
+            background-color: #2C2C2C;
+            border: 2px solid #03DAC6;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+            padding: 30px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 800px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .in-game-card h1 {
+            color: #03DAC6;
+            margin-bottom: 10px;
+        }
+        .in-game-card h2 {
+            color: #BB86FC;
+            margin-bottom: 20px;
+        }
+        .character-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .overview-item {
+            background-color: #3A3A3A;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .overview-item i {
+            color: #BB86FC;
+            font-size: 1.8em;
+        }
+        .overview-item strong {
+            color: #03DAC6;
+            font-size: 1.1em;
+        }
+        .overview-item span {
+            color: #E0E0E0;
+            font-size: 1.2em;
+        }
+        .game-status-message {
+            font-size: 1.3em;
+            color: #E0E0E0;
+            margin-top: 20px;
+        }
+        .back-to-lobby-button {
+            margin-top: 30px;
+            background-color: #CF6679; /* Red for exit */
+            color: #121212;
+            padding: 12px 25px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        .back-to-lobby-button:hover {
+            background-color: #B00020;
+        }
+
+        @media (max-width: 768px) {
+            .in-game-card {
+                padding: 20px;
+                max-width: 95%;
+            }
+            .character-overview {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="in-game-card">
+        <h1>¡Estás en Partida!</h1>
+        <h2>Jugando como: {{ character.nombre }} (Nivel {{ character.nivel }} {{ character.clase }})</h2>
+        <p class="game-status-message">Te encuentras en el lobby: {{ lobby_id[:8] }}...</p>
+
+        <div class="character-overview">
+            <div class="overview-item"><i class="fas fa-heart"></i> <strong>Vida</strong> <span>{{ character.vida }}</span></div>
+            <div class="overview-item"><i class="fas fa-magic"></i> <strong>Maná</strong> <span>{{ character.mana }}</span></div>
+            <div class="overview-item"><i class="fas fa-coins"></i> <strong>Dinero</strong> <span>{{ character.dinero }}</span></div>
+            <div class="overview-item"><i class="fas fa-shield-alt"></i> <strong>Defensa</strong> <span>{{ character.defensa }}</span></div>
+            <div class="overview-item"><i class="fas fa-fist-raised"></i> <strong>Fuerza</strong> <span>{{ character.fuerza }}</span></div>
+            <div class="overview-item"><i class="fas fa-brain"></i> <strong>Ingenio</strong> <span>{{ character.ingenio }}</span></div>
+            <div class="overview-item"><i class="fas fa-hand-holding-heart"></i> <strong>Corazón</strong> <span>{{ character.corazon }}</span></div>
+        </div>
+
+        <p>Esta es tu interfaz de juego. ¡Que comience la aventura!</p>
+
+        <a href="/lobby" class="back-to-lobby-button">Salir de la Partida (Volver al Lobby)</a>
+    </div>
+
+    <script></script>
+</body>
+</html>

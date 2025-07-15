@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>DND Helper - En Partida (Máster)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="/static/icons/favicon.ico">
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .in-game-master-card {
+            background-color: #1E1E1E;
+            border: 2px solid #BB86FC;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+            padding: 30px;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 900px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .in-game-master-card h1 {
+            color: #BB86FC;
+            margin-bottom: 10px;
+        }
+        .in-game-master-card h2 {
+            color: #03DAC6;
+            margin-bottom: 20px;
+        }
+        .players-in-game-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+        }
+        .player-game-item {
+            background-color: #2C2C2C;
+            border: 1px solid #333333;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .player-game-item h3 {
+            color: #03DAC6;
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 1.3em;
+        }
+        .player-game-item p {
+            margin: 3px 0;
+            color: #E0E0E0;
+        }
+        .player-game-item strong {
+            color: #BB86FC;
+        }
+        .player-game-item .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .player-game-item .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9em;
+        }
+        .player-game-item .stat-item i {
+            color: #03DAC6;
+            font-size: 1.1em;
+        }
+        .game-controls {
+            margin-top: 30px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+        .game-controls button {
+            background-color: #BB86FC;
+            color: #121212;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        .game-controls button:hover {
+            background-color: #9A50F0;
+        }
+        .game-controls .end-game-button {
+            background-color: #CF6679;
+        }
+        .game-controls .end-game-button:hover {
+            background-color: #B00020;
+        }
+
+        @media (max-width: 768px) {
+            .in-game-master-card {
+                padding: 20px;
+                max-width: 95%;
+            }
+            .players-in-game-list {
+                grid-template-columns: 1fr;
+            }
+            .game-controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            .game-controls button {
+                width: 90%;
+                max-width: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="in-game-master-card">
+        <h1>¡Partida en Curso!</h1>
+        <h2>Lobby ID: {{ lobby_id[:8] }}...</h2>
+        <p>Estado del Lobby: <strong>{{ lobby_info.status }}</strong></p>
+
+        <h3>Jugadores en Partida:</h3>
+        {% if players_in_lobby_details %}
+            <ul class="players-in-game-list">
+                {% for player in players_in_lobby_details %}
+                    <li class="player-game-item">
+                        <h3>{{ player.state.nombre }} <small>({{ player.username }})</small></h3>
+                        <p>Clase: <strong>{{ player.state.clase }}</strong> | Nivel: <strong>{{ player.state.nivel }}</strong></p>
+                        <div class="stats-grid">
+                            <div class="stat-item"><i class="fas fa-heart"></i> Vida: <span>{{ player.state.vida }}</span></div>
+                            <div class="stat-item"><i class="fas fa-magic"></i> Maná: <span>{{ player.state.mana }}</span></div>
+                            <div class="stat-item"><i class="fas fa-coins"></i> Dinero: <span>{{ player.state.dinero }}</span></div>
+                            <div class="stat-item"><i class="fas fa-shield-alt"></i> Defensa: <span>{{ player.state.defensa }}</span></div>
+                            <div class="stat-item"><i class="fas fa-fist-raised"></i> Fuerza: <span>{{ player.state.fuerza }}</span></div>
+                            <div class="stat-item"><i class="fas fa-brain"></i> Ingenio: <span>{{ player.state.ingenio }}</span></div>
+                            <div class="stat-item"><i class="fas fa-hand-holding-heart"></i> Corazón: <span>{{ player.state.corazon }}</span></div>
+                        </div>
+                        <!-- Aquí puedes añadir botones de administración para el máster (ej. modificar vida, maná) -->
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No hay jugadores en este lobby.</p>
+        {% endif %}
+
+        <div class="game-controls">
+            <button onclick="sendMasterCommand('some_command', { key: 'value' })">Enviar Comando</button>
+            <button class="end-game-button" onclick="endGame('{{ lobby_id }}')">Terminar Partida</button>
+            <a href="/master" class="action-button">Volver al Panel de Lobbies</a>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        const token = "{{ token }}";
+        const currentLobbyId = "{{ lobby_id }}";
+
+        function connectWebSocket() {
+            ws = new WebSocket(`ws://localhost:8000/ws`);
+
+            ws.onopen = (event) => {
+                console.log("WebSocket connected (in-game master)!");
+                ws.send(JSON.stringify({
+                    type: "connect",
+                    token: token,
+                    role: "master",
+                    lobby_id: currentLobbyId // Send current lobby ID on connect
+                }));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log("Received (in-game master):", data);
+                if (data.type === "players_state") {
+                    // This will receive updates for all active players, filter for current lobby if needed
+                    console.log("Active players state update:", data.players);
+                    // You would update the UI to reflect player changes in this lobby
+                    updatePlayersInLobby(data.players);
+                }
+                // Handle other master-specific messages (e.g., player actions, game events)
+            };
+
+            ws.onclose = (event) => {
+                console.log("WebSocket disconnected (in-game master). Reconnecting in 5 seconds...");
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket error (in-game master):", error);
+                ws.close();
+            };
+        }
+
+        function updatePlayersInLobby(allActivePlayers) {
+            const playersInCurrentLobby = Object.values(allActivePlayers).filter(
+                player => player.current_lobby_id === currentLobbyId
+            );
+
+            const playersList = document.querySelector('.players-in-game-list');
+            if (!playersList) return;
+
+            playersList.innerHTML = ''; // Clear existing players
+
+            if (playersInCurrentLobby.length === 0) {
+                playersList.innerHTML = '<p>No hay jugadores en este lobby.</p>';
+                return;
+            }
+
+            playersInCurrentLobby.forEach(player => {
+                const li = document.createElement('li');
+                li.className = 'player-game-item';
+                li.innerHTML = `
+                    <h3>${player.state.nombre} <small>(${player.username})</small></h3>
+                    <p>Clase: <strong>${player.state.clase}</strong> | Nivel: <strong>${player.state.nivel}</strong></p>
+                    <div class="stats-grid">
+                        <div class="stat-item"><i class="fas fa-heart"></i> Vida: <span>${player.state.vida}</span></div>
+                        <div class="stat-item"><i class="fas fa-magic"></i> Maná: <span>${player.state.mana}</span></div>
+                        <div class="stat-item"><i class="fas fa-coins"></i> Dinero: <span>${player.state.dinero}</span></div>
+                        <div class="stat-item"><i class="fas fa-shield-alt"></i> Defensa: <span>${player.state.defensa}</span></div>
+                        <div class="stat-item"><i class="fas fa-fist-raised"></i> Fuerza: <span>${player.state.fuerza}</span></div>
+                        <div class="stat-item"><i class="fas fa-brain"></i> Ingenio: <span>${player.state.ingenio}</span></div>
+                        <div class="stat-item"><i class="fas fa-hand-holding-heart"></i> Corazón: <span>${player.state.corazon}</span></div>
+                    </div>
+                `;
+                playersList.appendChild(li);
+            });
+        }
+
+        function sendMasterCommand(commandType, payload) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: commandType, lobby_id: currentLobbyId, ...payload }));
+                console.log(`Sent master command: ${commandType}`);
+            } else {
+                alert("No estás conectado al servidor.");
+            }
+        }
+
+        function endGame(lobbyId) {
+            if (confirm("¿Estás seguro de que quieres terminar esta partida?")) {
+                // You would send a WebSocket message to the server to end the game
+                // For now, let's just redirect back to master lobby
+                alert("Funcionalidad de terminar partida aún no implementada en el backend. Redirigiendo al panel de máster.");
+                window.location.href = "/master";
+            }
+        }
+
+        window.onload = connectWebSocket;
+    </script>
+</body>
+</html>
